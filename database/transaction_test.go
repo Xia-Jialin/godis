@@ -3,7 +3,7 @@ package database
 import (
 	"github.com/hdt3213/godis/lib/utils"
 	"github.com/hdt3213/godis/redis/connection"
-	"github.com/hdt3213/godis/redis/reply/asserts"
+	"github.com/hdt3213/godis/redis/protocol/asserts"
 	"testing"
 )
 
@@ -29,6 +29,20 @@ func TestMulti(t *testing.T) {
 	if len(conn.GetQueuedCmdLine()) > 0 {
 		t.Error("queue should be reset")
 	}
+}
+
+func TestSyntaxErr(t *testing.T) {
+	conn := new(connection.FakeConn)
+	testServer.Exec(conn, utils.ToCmdLine("FLUSHALL"))
+	result := testServer.Exec(conn, utils.ToCmdLine("multi"))
+	asserts.AssertNotError(t, result)
+	result = testServer.Exec(conn, utils.ToCmdLine("set"))
+	asserts.AssertErrReply(t, result, "ERR wrong number of arguments for 'set' command")
+	testServer.Exec(conn, utils.ToCmdLine("get", "a"))
+	result = testServer.Exec(conn, utils.ToCmdLine("exec"))
+	asserts.AssertErrReply(t, result, "EXECABORT Transaction discarded because of previous errors.")
+	result = testServer.Exec(conn, utils.ToCmdLine("get", "a"))
+	asserts.AssertNotError(t, result)
 }
 
 func TestRollback(t *testing.T) {

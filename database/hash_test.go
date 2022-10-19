@@ -3,8 +3,8 @@ package database
 import (
 	"fmt"
 	"github.com/hdt3213/godis/lib/utils"
-	"github.com/hdt3213/godis/redis/reply"
-	"github.com/hdt3213/godis/redis/reply/asserts"
+	"github.com/hdt3213/godis/redis/protocol"
+	"github.com/hdt3213/godis/redis/protocol/asserts"
 	"strconv"
 	"testing"
 )
@@ -21,27 +21,32 @@ func TestHSet(t *testing.T) {
 		field := strconv.Itoa(i)
 		values[field] = []byte(value)
 		result := testDB.Exec(nil, utils.ToCmdLine("hset", key, field, value))
-		if intResult, _ := result.(*reply.IntReply); intResult.Code != int64(1) {
+		if intResult, _ := result.(*protocol.IntReply); intResult.Code != int64(1) {
 			t.Error(fmt.Sprintf("expected %d, actually %d", 1, intResult.Code))
 		}
 	}
 
-	// test hget and hexists
+	// test hget, hexists and hstrlen
 	for field, v := range values {
 		actual := testDB.Exec(nil, utils.ToCmdLine("hget", key, field))
-		expected := reply.MakeBulkReply(v)
+		expected := protocol.MakeBulkReply(v)
 		if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 			t.Error(fmt.Sprintf("expected %s, actually %s", string(expected.ToBytes()), string(actual.ToBytes())))
 		}
 		actual = testDB.Exec(nil, utils.ToCmdLine("hexists", key, field))
-		if intResult, _ := actual.(*reply.IntReply); intResult.Code != int64(1) {
+		if intResult, _ := actual.(*protocol.IntReply); intResult.Code != int64(1) {
 			t.Error(fmt.Sprintf("expected %d, actually %d", 1, intResult.Code))
+		}
+
+		actual = testDB.Exec(nil, utils.ToCmdLine("hstrlen", key, field))
+		if intResult, _ := actual.(*protocol.IntReply); intResult.Code != int64(len(v)) {
+			t.Error(fmt.Sprintf("expected %d, actually %d", int64(len(v)), intResult.Code))
 		}
 	}
 
 	// test hlen
 	actual := testDB.Exec(nil, utils.ToCmdLine("hlen", key))
-	if intResult, _ := actual.(*reply.IntReply); intResult.Code != int64(len(values)) {
+	if intResult, _ := actual.(*protocol.IntReply); intResult.Code != int64(len(values)) {
 		t.Error(fmt.Sprintf("expected %d, actually %d", len(values), intResult.Code))
 	}
 }
@@ -64,12 +69,12 @@ func TestHDel(t *testing.T) {
 	args := []string{key}
 	args = append(args, fields...)
 	actual := testDB.Exec(nil, utils.ToCmdLine2("hdel", args...))
-	if intResult, _ := actual.(*reply.IntReply); intResult.Code != int64(len(fields)) {
+	if intResult, _ := actual.(*protocol.IntReply); intResult.Code != int64(len(fields)) {
 		t.Error(fmt.Sprintf("expected %d, actually %d", len(fields), intResult.Code))
 	}
 
 	actual = testDB.Exec(nil, utils.ToCmdLine("hlen", key))
-	if intResult, _ := actual.(*reply.IntReply); intResult.Code != int64(0) {
+	if intResult, _ := actual.(*protocol.IntReply); intResult.Code != int64(0) {
 		t.Error(fmt.Sprintf("expected %d, actually %d", 0, intResult.Code))
 	}
 }
@@ -89,7 +94,7 @@ func TestHMSet(t *testing.T) {
 		setArgs = append(setArgs, fields[i], values[i])
 	}
 	result := testDB.Exec(nil, utils.ToCmdLine2("hmset", setArgs...))
-	if _, ok := result.(*reply.OkReply); !ok {
+	if _, ok := result.(*protocol.OkReply); !ok {
 		t.Error(fmt.Sprintf("expected ok, actually %s", string(result.ToBytes())))
 	}
 
@@ -97,7 +102,7 @@ func TestHMSet(t *testing.T) {
 	getArgs := []string{key}
 	getArgs = append(getArgs, fields...)
 	actual := testDB.Exec(nil, utils.ToCmdLine2("hmget", getArgs...))
-	expected := reply.MakeMultiBulkReply(utils.ToCmdLine(values...))
+	expected := protocol.MakeMultiBulkReply(utils.ToCmdLine(values...))
 	if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 		t.Error(fmt.Sprintf("expected %s, actually %s", string(expected.ToBytes()), string(actual.ToBytes())))
 	}
@@ -122,7 +127,7 @@ func TestHGetAll(t *testing.T) {
 
 	// test HGetAll
 	result := testDB.Exec(nil, utils.ToCmdLine("hgetall", key))
-	multiBulk, ok := result.(*reply.MultiBulkReply)
+	multiBulk, ok := result.(*protocol.MultiBulkReply)
 	if !ok {
 		t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", string(result.ToBytes())))
 	}
@@ -144,7 +149,7 @@ func TestHGetAll(t *testing.T) {
 
 	// test HKeys
 	result = testDB.Exec(nil, utils.ToCmdLine("hkeys", key))
-	multiBulk, ok = result.(*reply.MultiBulkReply)
+	multiBulk, ok = result.(*protocol.MultiBulkReply)
 	if !ok {
 		t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", string(result.ToBytes())))
 	}
@@ -160,7 +165,7 @@ func TestHGetAll(t *testing.T) {
 
 	// test HVals
 	result = testDB.Exec(nil, utils.ToCmdLine("hvals", key))
-	multiBulk, ok = result.(*reply.MultiBulkReply)
+	multiBulk, ok = result.(*protocol.MultiBulkReply)
 	if !ok {
 		t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", string(result.ToBytes())))
 	}
@@ -174,6 +179,57 @@ func TestHGetAll(t *testing.T) {
 			t.Error(fmt.Sprintf("unexpected value %s", value))
 		}
 	}
+
+	// test HRandField
+	// test HRandField count of 0 is handled correctly -- "emptyarray"
+	result = testDB.Exec(nil, utils.ToCmdLine("hrandfield", key, "0"))
+	multiBulk, ok = result.(*protocol.MultiBulkReply)
+	if !ok {
+		resultBytes := string(result.ToBytes())
+		if resultBytes != "*0\r\n" {
+			t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", resultBytes))
+		}
+	}
+
+	// test HRandField count > size
+	result = testDB.Exec(nil, utils.ToCmdLine("hrandfield", key, strconv.Itoa(size+100)))
+	multiBulk, ok = result.(*protocol.MultiBulkReply)
+	if !ok {
+		t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", string(result.ToBytes())))
+	}
+	if len(fields) != len(multiBulk.Args) {
+		t.Error(fmt.Sprintf("expected %d items , actually %d ", len(fields), len(multiBulk.Args)))
+	}
+
+	// test HRandField count > size withvalues
+	result = testDB.Exec(nil, utils.ToCmdLine("hrandfield", key, strconv.Itoa(size+100), "withvalues"))
+	multiBulk, ok = result.(*protocol.MultiBulkReply)
+	if !ok {
+		t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", string(result.ToBytes())))
+	}
+	if 2*len(fields) != len(multiBulk.Args) {
+		t.Error(fmt.Sprintf("expected %d items , actually %d ", 2*len(fields), len(multiBulk.Args)))
+	}
+
+	// test HRandField count < size
+	result = testDB.Exec(nil, utils.ToCmdLine("hrandfield", key, strconv.Itoa(-size-10)))
+	multiBulk, ok = result.(*protocol.MultiBulkReply)
+	if !ok {
+		t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", string(result.ToBytes())))
+	}
+	if len(fields)+10 != len(multiBulk.Args) {
+		t.Error(fmt.Sprintf("expected %d items , actually %d ", len(fields)+10, len(multiBulk.Args)))
+	}
+
+	// test HRandField count < size withvalues
+	result = testDB.Exec(nil, utils.ToCmdLine("hrandfield", key, strconv.Itoa(-size-10), "withvalues"))
+	multiBulk, ok = result.(*protocol.MultiBulkReply)
+	if !ok {
+		t.Error(fmt.Sprintf("expected MultiBulkReply, actually %s", string(result.ToBytes())))
+	}
+	if 2*(len(fields)+10) != len(multiBulk.Args) {
+		t.Error(fmt.Sprintf("expected %d items , actually %d ", 2*(len(fields)+10), len(multiBulk.Args)))
+	}
 }
 
 func TestHIncrBy(t *testing.T) {
@@ -181,20 +237,20 @@ func TestHIncrBy(t *testing.T) {
 
 	key := utils.RandString(10)
 	result := testDB.Exec(nil, utils.ToCmdLine("hincrby", key, "a", "1"))
-	if bulkResult, _ := result.(*reply.BulkReply); string(bulkResult.Arg) != "1" {
+	if bulkResult, _ := result.(*protocol.BulkReply); string(bulkResult.Arg) != "1" {
 		t.Error(fmt.Sprintf("expected %s, actually %s", "1", string(bulkResult.Arg)))
 	}
 	result = testDB.Exec(nil, utils.ToCmdLine("hincrby", key, "a", "1"))
-	if bulkResult, _ := result.(*reply.BulkReply); string(bulkResult.Arg) != "2" {
+	if bulkResult, _ := result.(*protocol.BulkReply); string(bulkResult.Arg) != "2" {
 		t.Error(fmt.Sprintf("expected %s, actually %s", "2", string(bulkResult.Arg)))
 	}
 
 	result = testDB.Exec(nil, utils.ToCmdLine("hincrbyfloat", key, "b", "1.2"))
-	if bulkResult, _ := result.(*reply.BulkReply); string(bulkResult.Arg) != "1.2" {
+	if bulkResult, _ := result.(*protocol.BulkReply); string(bulkResult.Arg) != "1.2" {
 		t.Error(fmt.Sprintf("expected %s, actually %s", "1.2", string(bulkResult.Arg)))
 	}
 	result = testDB.Exec(nil, utils.ToCmdLine("hincrbyfloat", key, "b", "1.2"))
-	if bulkResult, _ := result.(*reply.BulkReply); string(bulkResult.Arg) != "2.4" {
+	if bulkResult, _ := result.(*protocol.BulkReply); string(bulkResult.Arg) != "2.4" {
 		t.Error(fmt.Sprintf("expected %s, actually %s", "2.4", string(bulkResult.Arg)))
 	}
 }

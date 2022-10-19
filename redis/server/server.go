@@ -14,7 +14,7 @@ import (
 	"github.com/hdt3213/godis/lib/sync/atomic"
 	"github.com/hdt3213/godis/redis/connection"
 	"github.com/hdt3213/godis/redis/parser"
-	"github.com/hdt3213/godis/redis/reply"
+	"github.com/hdt3213/godis/redis/protocol"
 	"io"
 	"net"
 	"strings"
@@ -57,6 +57,7 @@ func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 	if h.closing.Get() {
 		// closing handler refuse new connection
 		_ = conn.Close()
+		return
 	}
 
 	client := connection.NewConn(conn)
@@ -74,7 +75,7 @@ func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 				return
 			}
 			// protocol err
-			errReply := reply.MakeErrReply(payload.Err.Error())
+			errReply := protocol.MakeErrReply(payload.Err.Error())
 			err := client.Write(errReply.ToBytes())
 			if err != nil {
 				h.closeClient(client)
@@ -87,9 +88,9 @@ func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 			logger.Error("empty payload")
 			continue
 		}
-		r, ok := payload.Data.(*reply.MultiBulkReply)
+		r, ok := payload.Data.(*protocol.MultiBulkReply)
 		if !ok {
-			logger.Error("require multi bulk reply")
+			logger.Error("require multi bulk protocol")
 			continue
 		}
 		result := h.db.Exec(client, r.Args)

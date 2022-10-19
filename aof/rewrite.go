@@ -5,7 +5,7 @@ import (
 	"github.com/hdt3213/godis/interface/database"
 	"github.com/hdt3213/godis/lib/logger"
 	"github.com/hdt3213/godis/lib/utils"
-	"github.com/hdt3213/godis/redis/reply"
+	"github.com/hdt3213/godis/redis/protocol"
 	"io"
 	"io/ioutil"
 	"os"
@@ -28,19 +28,18 @@ type RewriteCtx struct {
 }
 
 // Rewrite carries out AOF rewrite
-func (handler *Handler) Rewrite() {
+func (handler *Handler) Rewrite() error {
 	ctx, err := handler.StartRewrite()
 	if err != nil {
-		logger.Warn(err)
-		return
+		return err
 	}
 	err = handler.DoRewrite(ctx)
 	if err != nil {
-		logger.Error(err)
-		return
+		return err
 	}
 
 	handler.FinishRewrite(ctx)
+	return nil
 }
 
 // DoRewrite actually rewrite aof file
@@ -55,7 +54,7 @@ func (handler *Handler) DoRewrite(ctx *RewriteCtx) error {
 	// rewrite aof tmpFile
 	for i := 0; i < config.Properties.Databases; i++ {
 		// select db
-		data := reply.MakeMultiBulkReply(utils.ToCmdLine("SELECT", strconv.Itoa(i))).ToBytes()
+		data := protocol.MakeMultiBulkReply(utils.ToCmdLine("SELECT", strconv.Itoa(i))).ToBytes()
 		_, err := tmpFile.Write(data)
 		if err != nil {
 			return err
@@ -128,7 +127,7 @@ func (handler *Handler) FinishRewrite(ctx *RewriteCtx) {
 	}
 
 	// sync tmpFile's db index with online aofFile
-	data := reply.MakeMultiBulkReply(utils.ToCmdLine("SELECT", strconv.Itoa(ctx.dbIdx))).ToBytes()
+	data := protocol.MakeMultiBulkReply(utils.ToCmdLine("SELECT", strconv.Itoa(ctx.dbIdx))).ToBytes()
 	_, err = tmpFile.Write(data)
 	if err != nil {
 		logger.Error("tmp file rewrite failed: " + err.Error())
@@ -152,8 +151,8 @@ func (handler *Handler) FinishRewrite(ctx *RewriteCtx) {
 	}
 	handler.aofFile = aofFile
 
-	// reset selected db 重新写入一次 select 指令保证 aof 中的数据库与 handler.currentDB 一致
-	data = reply.MakeMultiBulkReply(utils.ToCmdLine("SELECT", strconv.Itoa(handler.currentDB))).ToBytes()
+	// write select command again to ensure aof file has the same db index with  handler.currentDB
+	data = protocol.MakeMultiBulkReply(utils.ToCmdLine("SELECT", strconv.Itoa(handler.currentDB))).ToBytes()
 	_, err = handler.aofFile.Write(data)
 	if err != nil {
 		panic(err)

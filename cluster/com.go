@@ -6,7 +6,7 @@ import (
 	"github.com/hdt3213/godis/interface/redis"
 	"github.com/hdt3213/godis/lib/utils"
 	"github.com/hdt3213/godis/redis/client"
-	"github.com/hdt3213/godis/redis/reply"
+	"github.com/hdt3213/godis/redis/protocol"
 	"strconv"
 )
 
@@ -34,26 +34,31 @@ func (cluster *Cluster) returnPeerClient(peer string, peerClient *client.Client)
 	return connectionFactory.ReturnObject(context.Background(), peerClient)
 }
 
-// relay relays command to peer
+var defaultRelayImpl = func(cluster *Cluster, node string, c redis.Connection, cmdLine CmdLine) redis.Reply {
+	if node == cluster.self {
+		// to self db
+		return cluster.db.Exec(c, cmdLine)
+	}
+	peerClient, err := cluster.getPeerClient(node)
+	if err != nil {
+		return protocol.MakeErrReply(err.Error())
+	}
+	defer func() {
+		_ = cluster.returnPeerClient(node, peerClient)
+	}()
+	peerClient.Send(utils.ToCmdLine("SELECT", strconv.Itoa(c.GetDBIndex())))
+	return peerClient.Send(cmdLine)
+}
+
+// relay function relays command to peer
 // select db by c.GetDBIndex()
 // cannot call Prepare, Commit, execRollback of self node
 func (cluster *Cluster) relay(peer string, c redis.Connection, args [][]byte) redis.Reply {
-	if peer == cluster.self {
-		// to self db
-		return cluster.db.Exec(c, args)
-	}
-	peerClient, err := cluster.getPeerClient(peer)
-	if err != nil {
-		return reply.MakeErrReply(err.Error())
-	}
-	defer func() {
-		_ = cluster.returnPeerClient(peer, peerClient)
-	}()
-	peerClient.Send(utils.ToCmdLine("SELECT", strconv.Itoa(c.GetDBIndex())))
-	return peerClient.Send(args)
+	// use a variable to allow injecting stub for testing
+	return cluster.relayImpl(cluster, peer, c, args)
 }
 
-// broadcast broadcasts command to all node in cluster
+// broadcast function broadcasts command to all node in cluster
 func (cluster *Cluster) broadcast(c redis.Connection, args [][]byte) map[string]redis.Reply {
 	result := make(map[string]redis.Reply)
 	for _, node := range cluster.nodes {

@@ -12,12 +12,16 @@ import (
 	"github.com/hdt3213/godis/lib/consistenthash"
 	"github.com/hdt3213/godis/lib/idgenerator"
 	"github.com/hdt3213/godis/lib/logger"
-	"github.com/hdt3213/godis/redis/reply"
+	"github.com/hdt3213/godis/redis/protocol"
 	"github.com/jolestar/go-commons-pool/v2"
 	"runtime/debug"
-	"strconv"
 	"strings"
 )
+
+type PeerPicker interface {
+	AddNode(keys ...string)
+	PickNode(key string) string
+}
 
 // Cluster represents a node of godis cluster
 // it holds part of data and coordinates other nodes to finish transactions
@@ -25,18 +29,19 @@ type Cluster struct {
 	self string
 
 	nodes          []string
-	peerPicker     *consistenthash.Map
+	peerPicker     PeerPicker
 	peerConnection map[string]*pool.ObjectPool
 
 	db           database.EmbedDB
 	transactions *dict.SimpleDict // id -> Transaction
 
 	idGenerator *idgenerator.IDGenerator
+	// use a variable to allow injecting stub for testing
+	relayImpl func(cluster *Cluster, node string, c redis.Connection, cmdLine CmdLine) redis.Reply
 }
 
 const (
 	replicas = 4
-	lockSize = 64
 )
 
 // if only one node involved in a transaction, just execute the command don't apply tcc procedure
@@ -53,6 +58,7 @@ func MakeCluster() *Cluster {
 		peerConnection: make(map[string]*pool.ObjectPool),
 
 		idGenerator: idgenerator.MakeGenerator(config.Properties.Self),
+		relayImpl:   defaultRelayImpl,
 	}
 	contains := make(map[string]struct{})
 	nodes := make([]string, 0, len(config.Properties.Peers)+1)
@@ -76,7 +82,7 @@ func MakeCluster() *Cluster {
 }
 
 // CmdFunc represents the handler of a redis command
-type CmdFunc func(cluster *Cluster, c redis.Connection, cmdAndArgs [][]byte) redis.Reply
+type CmdFunc func(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply
 
 // Close stops current node of cluster
 func (cluster *Cluster) Close() {
@@ -97,7 +103,7 @@ func (cluster *Cluster) Exec(c redis.Connection, cmdLine [][]byte) (result redis
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Warn(fmt.Sprintf("error occurs: %v\n%s", err, string(debug.Stack())))
-			result = &reply.UnknownErrReply{}
+			result = &protocol.UnknownErrReply{}
 		}
 	}()
 	cmdName := strings.ToLower(string(cmdLine[0]))
@@ -105,27 +111,27 @@ func (cluster *Cluster) Exec(c redis.Connection, cmdLine [][]byte) (result redis
 		return database2.Auth(c, cmdLine[1:])
 	}
 	if !isAuthenticated(c) {
-		return reply.MakeErrReply("NOAUTH Authentication required")
+		return protocol.MakeErrReply("NOAUTH Authentication required")
 	}
 
 	if cmdName == "multi" {
 		if len(cmdLine) != 1 {
-			return reply.MakeArgNumErrReply(cmdName)
+			return protocol.MakeArgNumErrReply(cmdName)
 		}
 		return database2.StartMulti(c)
 	} else if cmdName == "discard" {
 		if len(cmdLine) != 1 {
-			return reply.MakeArgNumErrReply(cmdName)
+			return protocol.MakeArgNumErrReply(cmdName)
 		}
 		return database2.DiscardMulti(c)
 	} else if cmdName == "exec" {
 		if len(cmdLine) != 1 {
-			return reply.MakeArgNumErrReply(cmdName)
+			return protocol.MakeArgNumErrReply(cmdName)
 		}
 		return execMulti(cluster, c, nil)
 	} else if cmdName == "select" {
 		if len(cmdLine) != 2 {
-			return reply.MakeArgNumErrReply(cmdName)
+			return protocol.MakeArgNumErrReply(cmdName)
 		}
 		return execSelect(c, cmdLine)
 	}
@@ -134,7 +140,7 @@ func (cluster *Cluster) Exec(c redis.Connection, cmdLine [][]byte) (result redis
 	}
 	cmdFunc, ok := router[cmdName]
 	if !ok {
-		return reply.MakeErrReply("ERR unknown command '" + cmdName + "', or not supported in cluster mode")
+		return protocol.MakeErrReply("ERR unknown command '" + cmdName + "', or not supported in cluster mode")
 	}
 	result = cmdFunc(cluster, c, cmdLine)
 	return
@@ -143,46 +149,4 @@ func (cluster *Cluster) Exec(c redis.Connection, cmdLine [][]byte) (result redis
 // AfterClientClose does some clean after client close connection
 func (cluster *Cluster) AfterClientClose(c redis.Connection) {
 	cluster.db.AfterClientClose(c)
-}
-
-func ping(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
-	return cluster.db.Exec(c, cmdLine)
-}
-
-/*----- utils -------*/
-
-func makeArgs(cmd string, args ...string) [][]byte {
-	result := make([][]byte, len(args)+1)
-	result[0] = []byte(cmd)
-	for i, arg := range args {
-		result[i+1] = []byte(arg)
-	}
-	return result
-}
-
-// return peer -> writeKeys
-func (cluster *Cluster) groupBy(keys []string) map[string][]string {
-	result := make(map[string][]string)
-	for _, key := range keys {
-		peer := cluster.peerPicker.PickNode(key)
-		group, ok := result[peer]
-		if !ok {
-			group = make([]string, 0)
-		}
-		group = append(group, key)
-		result[peer] = group
-	}
-	return result
-}
-
-func execSelect(c redis.Connection, args [][]byte) redis.Reply {
-	dbIndex, err := strconv.Atoi(string(args[1]))
-	if err != nil {
-		return reply.MakeErrReply("ERR invalid DB index")
-	}
-	if dbIndex >= config.Properties.Databases {
-		return reply.MakeErrReply("ERR DB index is out of range")
-	}
-	c.SelectDB(dbIndex)
-	return reply.MakeOkReply()
 }

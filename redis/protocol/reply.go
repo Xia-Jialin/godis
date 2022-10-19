@@ -1,4 +1,4 @@
-package reply
+package protocol
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 )
 
 var (
-	nullBulkReplyBytes = []byte("$-1")
 
 	// CRLF is the line separator of redis serialization protocol
 	CRLF = "\r\n"
@@ -29,8 +28,8 @@ func MakeBulkReply(arg []byte) *BulkReply {
 
 // ToBytes marshal redis.Reply
 func (r *BulkReply) ToBytes() []byte {
-	if len(r.Arg) == 0 {
-		return nullBulkReplyBytes
+	if r.Arg == nil {
+		return nullBulkBytes
 	}
 	return []byte("$" + strconv.Itoa(len(r.Arg)) + CRLF + string(r.Arg) + CRLF)
 }
@@ -108,6 +107,11 @@ func (r *StatusReply) ToBytes() []byte {
 	return []byte("+" + r.Status + CRLF)
 }
 
+// IsOKReply returns true if the given protocol is +OK
+func IsOKReply(reply redis.Reply) bool {
+	return string(reply.ToBytes()) == "+OK\r\n"
+}
+
 /* ---- Int Reply ---- */
 
 // IntReply stores an int64 number
@@ -115,7 +119,7 @@ type IntReply struct {
 	Code int64
 }
 
-// MakeIntReply creates int reply
+// MakeIntReply creates int protocol
 func MakeIntReply(code int64) *IntReply {
 	return &IntReply{
 		Code: code,
@@ -147,7 +151,7 @@ func MakeErrReply(status string) *StandardErrReply {
 	}
 }
 
-// IsErrorReply returns true if the given reply is error
+// IsErrorReply returns true if the given protocol is error
 func IsErrorReply(reply redis.Reply) bool {
 	return reply.ToBytes()[0] == '-'
 }

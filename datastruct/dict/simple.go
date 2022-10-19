@@ -72,6 +72,7 @@ func (dict *SimpleDict) Keys() []string {
 	i := 0
 	for k := range dict.m {
 		result[i] = k
+		i++
 	}
 	return result
 }
@@ -106,7 +107,7 @@ func (dict *SimpleDict) RandomDistinctKeys(limit int) []string {
 	result := make([]string, size)
 	i := 0
 	for k := range dict.m {
-		if i == limit {
+		if i == size {
 			break
 		}
 		result[i] = k

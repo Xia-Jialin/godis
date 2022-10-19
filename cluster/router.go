@@ -25,6 +25,7 @@ func makeRouter() map[string]CmdFunc {
 	routerMap["type"] = defaultFunc
 	routerMap["rename"] = Rename
 	routerMap["renamenx"] = RenameNx
+	routerMap["copy"] = Copy
 
 	routerMap["set"] = defaultFunc
 	routerMap["setnx"] = defaultFunc
@@ -34,7 +35,9 @@ func makeRouter() map[string]CmdFunc {
 	routerMap["mget"] = MGet
 	routerMap["msetnx"] = MSetNX
 	routerMap["get"] = defaultFunc
+	routerMap["getex"] = defaultFunc
 	routerMap["getset"] = defaultFunc
+	routerMap["getdel"] = defaultFunc
 	routerMap["incr"] = defaultFunc
 	routerMap["incrby"] = defaultFunc
 	routerMap["incrbyfloat"] = defaultFunc
@@ -60,6 +63,7 @@ func makeRouter() map[string]CmdFunc {
 	routerMap["hexists"] = defaultFunc
 	routerMap["hdel"] = defaultFunc
 	routerMap["hlen"] = defaultFunc
+	routerMap["hstrlen"] = defaultFunc
 	routerMap["hmget"] = defaultFunc
 	routerMap["hmset"] = defaultFunc
 	routerMap["hkeys"] = defaultFunc
@@ -67,10 +71,12 @@ func makeRouter() map[string]CmdFunc {
 	routerMap["hgetall"] = defaultFunc
 	routerMap["hincrby"] = defaultFunc
 	routerMap["hincrbyfloat"] = defaultFunc
+	routerMap["hrandfield"] = defaultFunc
 
 	routerMap["sadd"] = defaultFunc
 	routerMap["sismember"] = defaultFunc
 	routerMap["srem"] = defaultFunc
+	routerMap["spop"] = defaultFunc
 	routerMap["scard"] = defaultFunc
 	routerMap["smembers"] = defaultFunc
 	routerMap["sinter"] = defaultFunc
@@ -117,7 +123,7 @@ func makeRouter() map[string]CmdFunc {
 	return routerMap
 }
 
-// relay command to responsible peer, and return its reply to client
+// relay command to responsible peer, and return its protocol to client
 func defaultFunc(cluster *Cluster, c redis.Connection, args [][]byte) redis.Reply {
 	key := string(args[1])
 	peer := cluster.peerPicker.PickNode(key)

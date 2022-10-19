@@ -2,23 +2,29 @@ package config
 
 import (
 	"bufio"
-	"github.com/hdt3213/godis/lib/logger"
 	"io"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/hdt3213/godis/lib/logger"
 )
 
 // ServerProperties defines global config properties
 type ServerProperties struct {
-	Bind           string `cfg:"bind"`
-	Port           int    `cfg:"port"`
-	AppendOnly     bool   `cfg:"appendOnly"`
-	AppendFilename string `cfg:"appendFilename"`
-	MaxClients     int    `cfg:"maxclients"`
-	RequirePass    string `cfg:"requirepass"`
-	Databases      int    `cfg:"databases"`
+	Bind              string `cfg:"bind"`
+	Port              int    `cfg:"port"`
+	AppendOnly        bool   `cfg:"appendonly"`
+	AppendFilename    string `cfg:"appendfilename"`
+	MaxClients        int    `cfg:"maxclients"`
+	RequirePass       string `cfg:"requirepass"`
+	Databases         int    `cfg:"databases"`
+	RDBFilename       string `cfg:"dbfilename"`
+	MasterAuth        string `cfg:"masterauth"`
+	SlaveAnnouncePort int    `cfg:"slave-announce-port"`
+	SlaveAnnounceIP   string `cfg:"slave-announce-ip"`
+	ReplTimeout       int    `cfg:"repl-timeout"`
 
 	Peers []string `cfg:"peers"`
 	Self  string   `cfg:"self"`

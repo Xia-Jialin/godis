@@ -3,8 +3,8 @@ package database
 import (
 	"fmt"
 	"github.com/hdt3213/godis/lib/utils"
-	"github.com/hdt3213/godis/redis/reply"
-	"github.com/hdt3213/godis/redis/reply/asserts"
+	"github.com/hdt3213/godis/redis/protocol"
+	"github.com/hdt3213/godis/redis/protocol/asserts"
 	"strconv"
 	"testing"
 )
@@ -18,10 +18,24 @@ func TestSet2(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		testDB.Exec(nil, utils.ToCmdLine("SET", key, value))
 		actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
-		expected := reply.MakeBulkReply([]byte(value))
+		expected := protocol.MakeBulkReply([]byte(value))
 		if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 			t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 		}
+	}
+}
+
+func TestSetEmpty(t *testing.T) {
+	key := utils.RandString(10)
+	testDB.Exec(nil, utils.ToCmdLine("SET", key, ""))
+	actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
+	bulkReply, ok := actual.(*protocol.BulkReply)
+	if !ok {
+		t.Errorf("expected bulk protocol, actually %s", actual.ToBytes())
+		return
+	}
+	if !(bulkReply.Arg != nil && len(bulkReply.Arg) == 0) {
+		t.Error("illegal empty string")
 	}
 }
 
@@ -33,14 +47,14 @@ func TestSet(t *testing.T) {
 	// normal set
 	testDB.Exec(nil, utils.ToCmdLine("SET", key, value))
 	actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
-	expected := reply.MakeBulkReply([]byte(value))
+	expected := protocol.MakeBulkReply([]byte(value))
 	if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 		t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 	}
 
 	// set nx
 	actual = testDB.Exec(nil, utils.ToCmdLine("SET", key, value, "NX"))
-	if _, ok := actual.(*reply.NullBulkReply); !ok {
+	if _, ok := actual.(*protocol.NullBulkReply); !ok {
 		t.Error("expected true actual false")
 	}
 
@@ -49,7 +63,7 @@ func TestSet(t *testing.T) {
 	value = utils.RandString(10)
 	actual = testDB.Exec(nil, utils.ToCmdLine("SET", key, value, "NX"))
 	actual = testDB.Exec(nil, utils.ToCmdLine("GET", key))
-	expected = reply.MakeBulkReply([]byte(value))
+	expected = protocol.MakeBulkReply([]byte(value))
 	if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 		t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 	}
@@ -59,7 +73,7 @@ func TestSet(t *testing.T) {
 	key = utils.RandString(10)
 	value = utils.RandString(10)
 	actual = testDB.Exec(nil, utils.ToCmdLine("SET", key, value, "XX"))
-	if _, ok := actual.(*reply.NullBulkReply); !ok {
+	if _, ok := actual.(*protocol.NullBulkReply); !ok {
 		t.Error("expected true actually false ")
 	}
 
@@ -77,9 +91,9 @@ func TestSet(t *testing.T) {
 	asserts.AssertBulkReply(t, actual, value)
 	actual = execTTL(testDB, utils.ToCmdLine(key))
 	actual = testDB.Exec(nil, utils.ToCmdLine("TTL", key))
-	intResult, ok := actual.(*reply.IntReply)
+	intResult, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Error(fmt.Sprintf("expected int reply, actually %s", actual.ToBytes()))
+		t.Error(fmt.Sprintf("expected int protocol, actually %s", actual.ToBytes()))
 		return
 	}
 	if intResult.Code <= 0 || intResult.Code > 1000 {
@@ -94,9 +108,9 @@ func TestSet(t *testing.T) {
 	actual = testDB.Exec(nil, utils.ToCmdLine("GET", key))
 	asserts.AssertBulkReply(t, actual, value)
 	actual = testDB.Exec(nil, utils.ToCmdLine("TTL", key))
-	intResult, ok = actual.(*reply.IntReply)
+	intResult, ok = actual.(*protocol.IntReply)
 	if !ok {
-		t.Error(fmt.Sprintf("expected int reply, actually %s", actual.ToBytes()))
+		t.Error(fmt.Sprintf("expected int protocol, actually %s", actual.ToBytes()))
 		return
 	}
 	if intResult.Code <= 0 || intResult.Code > 1000 {
@@ -111,13 +125,13 @@ func TestSetNX(t *testing.T) {
 	value := utils.RandString(10)
 	testDB.Exec(nil, utils.ToCmdLine("SETNX", key, value))
 	actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
-	expected := reply.MakeBulkReply([]byte(value))
+	expected := protocol.MakeBulkReply([]byte(value))
 	if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 		t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 	}
 
 	actual = testDB.Exec(nil, utils.ToCmdLine("SETNX", key, value))
-	expected2 := reply.MakeIntReply(int64(0))
+	expected2 := protocol.MakeIntReply(int64(0))
 	if !utils.BytesEquals(actual.ToBytes(), expected2.ToBytes()) {
 		t.Error("expected: " + string(expected2.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 	}
@@ -133,9 +147,9 @@ func TestSetEX(t *testing.T) {
 	actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
 	asserts.AssertBulkReply(t, actual, value)
 	actual = testDB.Exec(nil, utils.ToCmdLine("TTL", key))
-	intResult, ok := actual.(*reply.IntReply)
+	intResult, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Error(fmt.Sprintf("expected int reply, actually %s", actual.ToBytes()))
+		t.Error(fmt.Sprintf("expected int protocol, actually %s", actual.ToBytes()))
 		return
 	}
 	if intResult.Code <= 0 || intResult.Code > 1000 {
@@ -154,9 +168,9 @@ func TestPSetEX(t *testing.T) {
 	actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
 	asserts.AssertBulkReply(t, actual, value)
 	actual = testDB.Exec(nil, utils.ToCmdLine("PTTL", key))
-	intResult, ok := actual.(*reply.IntReply)
+	intResult, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Error(fmt.Sprintf("expected int reply, actually %s", actual.ToBytes()))
+		t.Error(fmt.Sprintf("expected int protocol, actually %s", actual.ToBytes()))
 		return
 	}
 	if intResult.Code <= 0 || intResult.Code > 1000000 {
@@ -179,7 +193,7 @@ func TestMSet(t *testing.T) {
 	}
 	testDB.Exec(nil, utils.ToCmdLine2("MSET", args...))
 	actual := testDB.Exec(nil, utils.ToCmdLine2("MGET", keys...))
-	expected := reply.MakeMultiBulkReply(values)
+	expected := protocol.MakeMultiBulkReply(values)
 	if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 		t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 	}
@@ -190,7 +204,7 @@ func TestMSet(t *testing.T) {
 	key2 := utils.RandString(10)
 	testDB.Exec(nil, utils.ToCmdLine2("LPush", key2, key2))
 	actual = testDB.Exec(nil, utils.ToCmdLine2("MGET", key1, key2))
-	arr := actual.(*reply.MultiBulkReply)
+	arr := actual.(*protocol.MultiBulkReply)
 	if string(arr.Args[0]) != key1 {
 		t.Error("expected: " + key1 + ", actual: " + string(arr.Args[1]))
 	}
@@ -206,7 +220,7 @@ func TestIncr(t *testing.T) {
 	for i := 0; i < size; i++ {
 		testDB.Exec(nil, utils.ToCmdLine("INCR", key))
 		actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
-		expected := reply.MakeBulkReply([]byte(strconv.FormatInt(int64(i+1), 10)))
+		expected := protocol.MakeBulkReply([]byte(strconv.FormatInt(int64(i+1), 10)))
 		if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 			t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 		}
@@ -214,7 +228,7 @@ func TestIncr(t *testing.T) {
 	for i := 0; i < size; i++ {
 		testDB.Exec(nil, utils.ToCmdLine("INCRBY", key, "-1"))
 		actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
-		expected := reply.MakeBulkReply([]byte(strconv.FormatInt(int64(size-i-1), 10)))
+		expected := protocol.MakeBulkReply([]byte(strconv.FormatInt(int64(size-i-1), 10)))
 		if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 			t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 		}
@@ -225,7 +239,7 @@ func TestIncr(t *testing.T) {
 	for i := 0; i < size; i++ {
 		testDB.Exec(nil, utils.ToCmdLine("INCRBY", key, "1"))
 		actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
-		expected := reply.MakeBulkReply([]byte(strconv.FormatInt(int64(i+1), 10)))
+		expected := protocol.MakeBulkReply([]byte(strconv.FormatInt(int64(i+1), 10)))
 		if !utils.BytesEquals(actual.ToBytes(), expected.ToBytes()) {
 			t.Error("expected: " + string(expected.ToBytes()) + ", actual: " + string(actual.ToBytes()))
 		}
@@ -235,9 +249,9 @@ func TestIncr(t *testing.T) {
 		testDB.Exec(nil, utils.ToCmdLine("INCRBYFLOAT", key, "-1.0"))
 		actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
 		expected := -i - 1
-		bulk, ok := actual.(*reply.BulkReply)
+		bulk, ok := actual.(*protocol.BulkReply)
 		if !ok {
-			t.Error(fmt.Sprintf("expected bulk reply, actually %s", actual.ToBytes()))
+			t.Error(fmt.Sprintf("expected bulk protocol, actually %s", actual.ToBytes()))
 			return
 		}
 		val, err := strconv.ParseFloat(string(bulk.Arg), 10)
@@ -266,9 +280,9 @@ func TestDecr(t *testing.T) {
 		testDB.Exec(nil, utils.ToCmdLine("DECRBY", key, "1"))
 		actual := testDB.Exec(nil, utils.ToCmdLine("GET", key))
 		expected := -i - 1
-		bulk, ok := actual.(*reply.BulkReply)
+		bulk, ok := actual.(*protocol.BulkReply)
 		if !ok {
-			t.Error(fmt.Sprintf("expected bulk reply, actually %s", actual.ToBytes()))
+			t.Error(fmt.Sprintf("expected bulk protocol, actually %s", actual.ToBytes()))
 			return
 		}
 		val, err := strconv.ParseFloat(string(bulk.Arg), 10)
@@ -283,15 +297,71 @@ func TestDecr(t *testing.T) {
 	}
 }
 
+func TestGetEX(t *testing.T) {
+	testDB.Flush()
+	key := utils.RandString(10)
+	value := utils.RandString(10)
+	ttl := "1000"
+
+	testDB.Exec(nil, utils.ToCmdLine("SET", key, value))
+
+	// Normal Get
+	actual := testDB.Exec(nil, utils.ToCmdLine("GETEX", key))
+	asserts.AssertBulkReply(t, actual, value)
+
+	// Test GetEX Key EX Seconds
+	actual = testDB.Exec(nil, utils.ToCmdLine("GETEX", key, "EX", ttl))
+	asserts.AssertBulkReply(t, actual, value)
+	actual = testDB.Exec(nil, utils.ToCmdLine("TTL", key))
+	intResult, ok := actual.(*protocol.IntReply)
+	if !ok {
+		t.Error(fmt.Sprintf("expected int protocol, actually %s", actual.ToBytes()))
+		return
+	}
+	if intResult.Code <= 0 || intResult.Code > 1000 {
+		t.Error(fmt.Sprintf("expected int between [0, 1000], actually %d", intResult.Code))
+		return
+	}
+
+	// Test GetEX Key Persist
+	actual = testDB.Exec(nil, utils.ToCmdLine("GETEX", key, "PERSIST"))
+	asserts.AssertBulkReply(t, actual, value)
+	actual = testDB.Exec(nil, utils.ToCmdLine("TTL", key))
+	intResult, ok = actual.(*protocol.IntReply)
+	if !ok {
+		t.Error(fmt.Sprintf("expected int protocol, actually %s", actual.ToBytes()))
+		return
+	}
+	if intResult.Code != -1 {
+		t.Error(fmt.Sprintf("expected int equals -1, actually %d", intResult.Code))
+		return
+	}
+
+	// Test GetEX Key NX Milliseconds
+	ttl = "1000000"
+	actual = testDB.Exec(nil, utils.ToCmdLine("GETEX", key, "PX", ttl))
+	asserts.AssertBulkReply(t, actual, value)
+	actual = testDB.Exec(nil, utils.ToCmdLine("TTL", key))
+	intResult, ok = actual.(*protocol.IntReply)
+	if !ok {
+		t.Error(fmt.Sprintf("expected int protocol, actually %s", actual.ToBytes()))
+		return
+	}
+	if intResult.Code <= 0 || intResult.Code > 1000000 {
+		t.Error(fmt.Sprintf("expected int between [0, 1000000], actually %d", intResult.Code))
+		return
+	}
+}
+
 func TestGetSet(t *testing.T) {
 	testDB.Flush()
 	key := utils.RandString(10)
 	value := utils.RandString(10)
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GETSET", key, value))
-	_, ok := actual.(*reply.NullBulkReply)
+	_, ok := actual.(*protocol.NullBulkReply)
 	if !ok {
-		t.Errorf("expect null bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect null bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -300,6 +370,17 @@ func TestGetSet(t *testing.T) {
 	asserts.AssertBulkReply(t, actual, value)
 	actual = testDB.Exec(nil, utils.ToCmdLine("GET", key))
 	asserts.AssertBulkReply(t, actual, value2)
+
+	// Test GetDel
+	actual = testDB.Exec(nil, utils.ToCmdLine("GETDEL", key))
+	asserts.AssertBulkReply(t, actual, value2)
+
+	actual = testDB.Exec(nil, utils.ToCmdLine("GETDEL", key))
+	_, ok = actual.(*protocol.NullBulkReply)
+	if !ok {
+		t.Errorf("expect null bulk protocol, get: %s", string(actual.ToBytes()))
+		return
+	}
 }
 
 func TestMSetNX(t *testing.T) {
@@ -323,12 +404,12 @@ func TestStrLen(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("StrLen", key))
-	len, ok := actual.(*reply.IntReply)
+	size, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Errorf("expect int bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect int bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
-	asserts.AssertIntReply(t, len, 10)
+	asserts.AssertIntReply(t, size, 10)
 }
 
 func TestStrLen_KeyNotExist(t *testing.T) {
@@ -336,9 +417,9 @@ func TestStrLen_KeyNotExist(t *testing.T) {
 	key := utils.RandString(10)
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("StrLen", key))
-	result, ok := actual.(*reply.IntReply)
+	result, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Errorf("expect null bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect null bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -352,9 +433,9 @@ func TestAppend_KeyExist(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("Append", key, key2))
-	val, ok := actual.(*reply.IntReply)
+	val, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Errorf("expect nil bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect nil bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 	asserts.AssertIntReply(t, val, len(key)*2)
@@ -365,9 +446,9 @@ func TestAppend_KeyNotExist(t *testing.T) {
 	key := utils.RandString(10)
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("Append", key, key))
-	val, ok := actual.(*reply.IntReply)
+	val, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Errorf("expect nil bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect nil bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 	asserts.AssertIntReply(t, val, len(key))
@@ -380,9 +461,9 @@ func TestSetRange_StringExist(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("SetRange", key, fmt.Sprint(0), key2))
-	val, ok := actual.(*reply.IntReply)
+	val, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Errorf("expect int bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect int bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -398,9 +479,9 @@ func TestSetRange_StringExist_OffsetOutOfLen(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("SetRange", key, fmt.Sprint(len(key)+emptyByteLen), key2))
-	val, ok := actual.(*reply.IntReply)
+	val, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Errorf("expect int bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect int bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -413,9 +494,9 @@ func TestSetRange_StringNotExist(t *testing.T) {
 	key := utils.RandString(10)
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("SetRange", key, fmt.Sprint(0), key))
-	val, ok := actual.(*reply.IntReply)
+	val, ok := actual.(*protocol.IntReply)
 	if !ok {
-		t.Errorf("expect int bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect int bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 	asserts.AssertIntReply(t, val, len(key))
@@ -427,9 +508,9 @@ func TestGetRange_StringExist(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), fmt.Sprint(len(key))))
-	val, ok := actual.(*reply.BulkReply)
+	val, ok := actual.(*protocol.BulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -442,9 +523,9 @@ func TestGetRange_RangeLargeThenDataLen(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), fmt.Sprint(len(key)+2)))
-	val, ok := actual.(*reply.BulkReply)
+	val, ok := actual.(*protocol.BulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -455,9 +536,9 @@ func TestGetRange_StringNotExist(t *testing.T) {
 	testDB.Flush()
 	key := utils.RandString(10)
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), fmt.Sprint(len(key))))
-	val, ok := actual.(*reply.NullBulkReply)
+	val, ok := actual.(*protocol.NullBulkReply)
 	if !ok {
-		t.Errorf("expect nil bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect nil bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -470,9 +551,9 @@ func TestGetRange_StringExist_GetPartial(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), fmt.Sprint(len(key)/2)))
-	val, ok := actual.(*reply.BulkReply)
+	val, ok := actual.(*protocol.BulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -486,9 +567,9 @@ func TestGetRange_StringExist_EndIdxOutOfRange(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), fmt.Sprint(len(key)+emptyByteLen)))
-	val, ok := actual.(*reply.BulkReply)
+	val, ok := actual.(*protocol.BulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -502,9 +583,9 @@ func TestGetRange_StringExist_StartIdxEndIdxAreSame(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(len(key)+emptyByteLen), fmt.Sprint(len(key)+emptyByteLen)))
-	val, ok := actual.(*reply.NullBulkReply)
+	val, ok := actual.(*protocol.NullBulkReply)
 	if !ok {
-		t.Errorf("expect nil bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect nil bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -516,9 +597,9 @@ func TestGetRange_StringExist_StartIdxGreaterThanEndIdx(t *testing.T) {
 	key := utils.RandString(10)
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(len(key)+1), fmt.Sprint(len(key))))
-	val, ok := actual.(*reply.NullBulkReply)
+	val, ok := actual.(*protocol.NullBulkReply)
 	if !ok {
-		t.Errorf("expect nil bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect nil bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -531,9 +612,9 @@ func TestGetRange_StringExist_StartIdxEndIdxAreNegative(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(-1*len(key)), fmt.Sprint(-1)))
-	val, ok := actual.(*reply.BulkReply)
+	val, ok := actual.(*protocol.BulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -546,9 +627,9 @@ func TestGetRange_StringExist_StartIdxNegative(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(-1*len(key)), fmt.Sprint(len(key)/2)))
-	val, ok := actual.(*reply.BulkReply)
+	val, ok := actual.(*protocol.BulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -561,9 +642,9 @@ func TestGetRange_StringExist_EndIdxNegative(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), fmt.Sprint(-len(key)/2)))
-	val, ok := actual.(*reply.BulkReply)
+	val, ok := actual.(*protocol.BulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -576,9 +657,9 @@ func TestGetRange_StringExist_StartIsOutOfRange(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(-len(key)-3), fmt.Sprint(len(key))))
-	val, ok := actual.(*reply.NullBulkReply)
+	val, ok := actual.(*protocol.NullBulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -591,9 +672,9 @@ func TestGetRange_StringExist_EndIdxIsOutOfRange(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), fmt.Sprint(-len(key)-3)))
-	val, ok := actual.(*reply.NullBulkReply)
+	val, ok := actual.(*protocol.NullBulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -606,9 +687,9 @@ func TestGetRange_StringExist_StartIdxGreaterThanDataLen(t *testing.T) {
 	testDB.Exec(nil, utils.ToCmdLine2("SET", key, key))
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(len(key)+1), fmt.Sprint(0)))
-	val, ok := actual.(*reply.NullBulkReply)
+	val, ok := actual.(*protocol.NullBulkReply)
 	if !ok {
-		t.Errorf("expect bulk reply, get: %s", string(actual.ToBytes()))
+		t.Errorf("expect bulk protocol, get: %s", string(actual.ToBytes()))
 		return
 	}
 
@@ -622,14 +703,7 @@ func TestGetRange_StringExist_StartIdxIncorrectFormat(t *testing.T) {
 	incorrectValue := "incorrect"
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, incorrectValue, fmt.Sprint(0)))
-	val, ok := actual.(*reply.StandardErrReply)
-	if !ok {
-		t.Errorf("expect standart bulk reply, get: %s", string(actual.ToBytes()))
-		return
-	}
-
-	errorMsg := fmt.Sprintf("strconv.ParseInt: parsing \"%s\": invalid syntax", incorrectValue)
-	asserts.AssertErrReply(t, val, errorMsg)
+	asserts.AssertErrReply(t, actual, "ERR value is not an integer or out of range")
 }
 
 func TestGetRange_StringExist_EndIdxIncorrectFormat(t *testing.T) {
@@ -639,12 +713,92 @@ func TestGetRange_StringExist_EndIdxIncorrectFormat(t *testing.T) {
 	incorrectValue := "incorrect"
 
 	actual := testDB.Exec(nil, utils.ToCmdLine("GetRange", key, fmt.Sprint(0), incorrectValue))
-	val, ok := actual.(*reply.StandardErrReply)
-	if !ok {
-		t.Errorf("expect standart bulk reply, get: %s", string(actual.ToBytes()))
-		return
-	}
+	asserts.AssertErrReply(t, actual, "ERR value is not an integer or out of range")
+}
 
-	errorMsg := fmt.Sprintf("strconv.ParseInt: parsing \"%s\": invalid syntax", incorrectValue)
-	asserts.AssertErrReply(t, val, errorMsg)
+func TestSetBit(t *testing.T) {
+	testDB.Flush()
+	key := utils.RandString(10)
+	actual := testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "15", "1"))
+	asserts.AssertIntReply(t, actual, 0)
+	actual = testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "15", "0"))
+	asserts.AssertIntReply(t, actual, 1)
+	testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "13", "1"))
+	actual = testDB.Exec(nil, utils.ToCmdLine("GetBit", key, "13"))
+	asserts.AssertIntReply(t, actual, 1)
+	actual = testDB.Exec(nil, utils.ToCmdLine("GetBit", key+"1", "13")) // test not exist key
+	asserts.AssertIntReply(t, actual, 0)
+
+	actual = testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "13", "a"))
+	asserts.AssertErrReply(t, actual, "ERR bit is not an integer or out of range")
+	actual = testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "a", "1"))
+	asserts.AssertErrReply(t, actual, "ERR bit offset is not an integer or out of range")
+	actual = testDB.Exec(nil, utils.ToCmdLine("GetBit", key, "a"))
+	asserts.AssertErrReply(t, actual, "ERR bit offset is not an integer or out of range")
+
+	key2 := utils.RandString(11)
+	testDB.Exec(nil, utils.ToCmdLine("rpush", key2, "1"))
+	actual = testDB.Exec(nil, utils.ToCmdLine("SetBit", key2, "15", "0"))
+	asserts.AssertErrReply(t, actual, "WRONGTYPE Operation against a key holding the wrong kind of value")
+	actual = testDB.Exec(nil, utils.ToCmdLine("GetBit", key2, "15"))
+	asserts.AssertErrReply(t, actual, "WRONGTYPE Operation against a key holding the wrong kind of value")
+}
+
+func TestBitCount(t *testing.T) {
+	testDB.Flush()
+	key := utils.RandString(10)
+	testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "15", "1"))
+	testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "13", "1"))
+	actual := testDB.Exec(nil, utils.ToCmdLine("BitCount", key))
+	asserts.AssertIntReply(t, actual, 2)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key, "14", "15", "BIT"))
+	asserts.AssertIntReply(t, actual, 1)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key, "16", "20", "BIT"))
+	asserts.AssertIntReply(t, actual, 0)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key, "1", "1", "BYTE"))
+	asserts.AssertIntReply(t, actual, 2)
+
+	key2 := utils.RandString(11)
+	testDB.Exec(nil, utils.ToCmdLine("rpush", key2, "1"))
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key2))
+	asserts.AssertErrReply(t, actual, "WRONGTYPE Operation against a key holding the wrong kind of value")
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key+"a"))
+	asserts.AssertIntReply(t, actual, 0)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key, "14", "15", "B"))
+	asserts.AssertErrReply(t, actual, "ERR syntax error")
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key, "14", "A"))
+	asserts.AssertErrReply(t, actual, "ERR value is not an integer or out of range")
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitCount", key, "A", "-1"))
+	asserts.AssertErrReply(t, actual, "ERR value is not an integer or out of range")
+}
+
+func TestBitPos(t *testing.T) {
+	testDB.Flush()
+	key := utils.RandString(10)
+	testDB.Exec(nil, utils.ToCmdLine("SetBit", key, "15", "1"))
+	actual := testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "0"))
+	asserts.AssertIntReply(t, actual, 0)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "1"))
+	asserts.AssertIntReply(t, actual, 15)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "1", "0", "-1", "BIT"))
+	asserts.AssertIntReply(t, actual, 15)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "1", "1", "1", "BYTE"))
+	asserts.AssertIntReply(t, actual, 15)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "0", "1", "1", "BYTE"))
+	asserts.AssertIntReply(t, actual, 8)
+
+	key2 := utils.RandString(12)
+	testDB.Exec(nil, utils.ToCmdLine("rpush", key2, "1"))
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key2, "1"))
+	asserts.AssertErrReply(t, actual, "WRONGTYPE Operation against a key holding the wrong kind of value")
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key+"a", "1"))
+	asserts.AssertIntReply(t, actual, -1)
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "1", "1", "15", "B"))
+	asserts.AssertErrReply(t, actual, "ERR syntax error")
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "1", "14", "A"))
+	asserts.AssertErrReply(t, actual, "ERR value is not an integer or out of range")
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "1", "a", "14"))
+	asserts.AssertErrReply(t, actual, "ERR value is not an integer or out of range")
+	actual = testDB.Exec(nil, utils.ToCmdLine("BitPos", key, "-1"))
+	asserts.AssertErrReply(t, actual, "ERR bit is not an integer or out of range")
 }

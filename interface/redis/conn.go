@@ -19,8 +19,13 @@ type Connection interface {
 	EnqueueCmd([][]byte)
 	ClearQueuedCmds()
 	GetWatching() map[string]uint32
+	AddTxError(err error)
+	GetTxErrors() []error
 
 	// used for multi database
 	GetDBIndex() int
 	SelectDB(int)
+	// returns role of conn, such as connection with client, connection with master node
+	GetRole() int32
+	SetRole(int32)
 }

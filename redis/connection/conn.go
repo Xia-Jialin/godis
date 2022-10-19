@@ -8,11 +8,18 @@ import (
 	"time"
 )
 
+const (
+	// NormalCli is client with user
+	NormalCli = iota
+	// ReplicationRecvCli is fake client with replication master
+	ReplicationRecvCli
+)
+
 // Connection represents a connection with a redis-cli
 type Connection struct {
 	conn net.Conn
 
-	// waiting until reply finished
+	// waiting until protocol finished
 	waitingReply wait.Wait
 
 	// lock while server sending response
@@ -28,9 +35,11 @@ type Connection struct {
 	multiState bool
 	queue      [][][]byte
 	watching   map[string]uint32
+	txErrors   []error
 
 	// selected db
 	selectedDB int
+	role       int32
 }
 
 // RemoteAddr returns the remote network address
@@ -57,11 +66,9 @@ func (c *Connection) Write(b []byte) error {
 	if len(b) == 0 {
 		return nil
 	}
-	c.mu.Lock()
 	c.waitingReply.Add(1)
 	defer func() {
 		c.waitingReply.Done()
-		c.mu.Unlock()
 	}()
 
 	_, err := c.conn.Write(b)
@@ -143,9 +150,31 @@ func (c *Connection) EnqueueCmd(cmdLine [][]byte) {
 	c.queue = append(c.queue, cmdLine)
 }
 
+// AddTxError stores syntax error within transaction
+func (c *Connection) AddTxError(err error) {
+	c.txErrors = append(c.txErrors, err)
+}
+
+// GetTxErrors returns syntax error within transaction
+func (c *Connection) GetTxErrors() []error {
+	return c.txErrors
+}
+
 // ClearQueuedCmds clears queued commands of current transaction
 func (c *Connection) ClearQueuedCmds() {
 	c.queue = nil
+}
+
+// GetRole returns role of connection, such as connection with master
+func (c *Connection) GetRole() int32 {
+	if c == nil {
+		return NormalCli
+	}
+	return c.role
+}
+
+func (c *Connection) SetRole(r int32) {
+	c.role = r
 }
 
 // GetWatching returns watching keys and their version code when started watching

@@ -18,6 +18,7 @@
     - flushall
     - keys
     - bgrewriteaof
+    - copy
 - String
     - set
     - setnx
@@ -27,7 +28,9 @@
     - mget
     - msetnx
     - get
+    - getex
     - getset
+    - getdel
     - incr
     - incrby
     - incrbyfloat
@@ -53,6 +56,7 @@
     - hexists
     - hdel
     - hlen
+    - hstrlen
     - hmget
     - hmset
     - hkeys
@@ -60,10 +64,12 @@
     - hgetall
     - hincrby
     - hincrbyfloat
+    - hrandfield
 - Set
     - sadd
     - sismember
     - srem
+    - spop
     - scard
     - smembers
     - sinter
